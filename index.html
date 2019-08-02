@@ -3879,6 +3879,758 @@ function asArray(value) {
 
 },{}]},{},[13]);
 </script>
+<script>(function (root, factory) {
+	if (typeof define === 'function' && define.amd) {
+		// AMD. Register as an anonymous module.
+		define(['leaflet'], factory);
+	} else if (typeof modules === 'object' && module.exports) {
+		// define a Common JS module that relies on 'leaflet'
+		module.exports = factory(require('leaflet'));
+	} else {
+		// Assume Leaflet is loaded into global object L already
+		factory(L);
+	}
+}(this, function (L) {
+	'use strict';
+
+	L.TileLayer.Provider = L.TileLayer.extend({
+		initialize: function (arg, options) {
+			var providers = L.TileLayer.Provider.providers;
+
+			var parts = arg.split('.');
+
+			var providerName = parts[0];
+			var variantName = parts[1];
+
+			if (!providers[providerName]) {
+				throw 'No such provider (' + providerName + ')';
+			}
+
+			var provider = {
+				url: providers[providerName].url,
+				options: providers[providerName].options
+			};
+
+			// overwrite values in provider from variant.
+			if (variantName && 'variants' in providers[providerName]) {
+				if (!(variantName in providers[providerName].variants)) {
+					throw 'No such variant of ' + providerName + ' (' + variantName + ')';
+				}
+				var variant = providers[providerName].variants[variantName];
+				var variantOptions;
+				if (typeof variant === 'string') {
+					variantOptions = {
+						variant: variant
+					};
+				} else {
+					variantOptions = variant.options;
+				}
+				provider = {
+					url: variant.url || provider.url,
+					options: L.Util.extend({}, provider.options, variantOptions)
+				};
+			}
+
+			// If retina option is set
+			if (provider.options.retina) {
+				// Check retina screen
+				if (options.detectRetina && L.Browser.retina) {
+					// The retina option will be active now
+					// But we need to prevent Leaflet retina mode
+					options.detectRetina = false;
+				} else {
+					// No retina, remove option
+					provider.options.retina = '';
+				}
+			}
+
+			// replace attribution placeholders with their values from toplevel provider attribution,
+			// recursively
+			var attributionReplacer = function (attr) {
+				if (attr.indexOf('{attribution.') === -1) {
+					return attr;
+				}
+				return attr.replace(/\{attribution.(\w*)\}/,
+					function (match, attributionName) {
+						return attributionReplacer(providers[attributionName].options.attribution);
+					}
+				);
+			};
+			provider.options.attribution = attributionReplacer(provider.options.attribution);
+
+			// Compute final options combining provider options with any user overrides
+			var layerOpts = L.Util.extend({}, provider.options, options);
+			L.TileLayer.prototype.initialize.call(this, provider.url, layerOpts);
+		}
+	});
+
+	/**
+	 * Definition of providers.
+	 * see http://leafletjs.com/reference.html#tilelayer for options in the options map.
+	 */
+
+	L.TileLayer.Provider.providers = {
+		OpenStreetMap: {
+			url: '//{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+			options: {
+				maxZoom: 19,
+				attribution:
+					'&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+			},
+			variants: {
+				Mapnik: {},
+				BlackAndWhite: {
+					url: 'http://{s}.tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png',
+					options: {
+						maxZoom: 18
+					}
+				},
+				DE: {
+					url: '//{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png',
+					options: {
+						maxZoom: 18
+					}
+				},
+				CH: {
+					url: '//tile.osm.ch/switzerland/{z}/{x}/{y}.png',
+					options: {
+						maxZoom: 18
+					}
+				},
+				France: {
+					url: '//{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
+					options: {
+						maxZoom: 20,
+						attribution: '&copy; Openstreetmap France | {attribution.OpenStreetMap}'
+					}
+				},
+				HOT: {
+					url: '//{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+					options: {
+						attribution: '{attribution.OpenStreetMap}, Tiles courtesy of <a href="http://hot.openstreetmap.org/" target="_blank">Humanitarian OpenStreetMap Team</a>'
+					}
+				},
+				BZH: {
+					url: 'https://tile.openstreetmap.bzh/br/{z}/{x}/{y}.png',
+					options: {
+						attribution: '{attribution.OpenStreetMap}, Tiles courtesy of <a href="http://www.openstreetmap.bzh/" target="_blank">Breton OpenStreetMap Team</a>',
+						bounds: [[46.2, -5.5], [50, 0.7]]
+					}
+				}
+			}
+		},
+		OpenInfraMap: {
+			url: 'https://tiles-{s}.openinframap.org/{variant}/{z}/{x}/{y}.png',
+			options: {
+				maxZoom: 18,
+				attribution:
+					'{attribution.OpenStreetMap}, <a href="http://www.openinframap.org/about.html">About OpenInfraMap</a>'
+			},
+			variants: {
+				  Power:       'power' ,
+				  Telecom:     'telecoms' ,
+				  Petroleum:   'petroleum' ,
+				  Water:       'water'
+			}
+		},
+		OpenSeaMap: {
+			url: '//tiles.openseamap.org/seamark/{z}/{x}/{y}.png',
+			options: {
+				attribution: 'Map data: &copy; <a href="http://www.openseamap.org">OpenSeaMap</a> contributors'
+			}
+		},
+		OpenPtMap: {
+			url: 'http://openptmap.org/tiles/{z}/{x}/{y}.png',
+			options: {
+				maxZoom: 17,
+				attribution: 'Map data: &copy; <a href="http://www.openptmap.org">OpenPtMap</a> contributors'
+			}
+		},
+		OpenTopoMap: {
+			url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+			options: {
+				maxZoom: 17,
+				attribution: 'Map data: {attribution.OpenStreetMap}, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+			}
+		},
+		OpenRailwayMap: {
+			url: 'https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png',
+			options: {
+				maxZoom: 19,
+				attribution: 'Map data: {attribution.OpenStreetMap} | Map style: &copy; <a href="https://www.OpenRailwayMap.org">OpenRailwayMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+			}
+		},
+		OpenFireMap: {
+			url: 'http://openfiremap.org/hytiles/{z}/{x}/{y}.png',
+			options: {
+				maxZoom: 19,
+				attribution: 'Map data: {attribution.OpenStreetMap} | Map style: &copy; <a href="http://www.openfiremap.org">OpenFireMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+			}
+		},
+		SafeCast: {
+			url: '//s3.amazonaws.com/te512.safecast.org/{z}/{x}/{y}.png',
+			options: {
+				maxZoom: 16,
+				attribution: 'Map data: {attribution.OpenStreetMap} | Map style: &copy; <a href="https://blog.safecast.org/about/">SafeCast</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+			}
+		},
+		Thunderforest: {
+			url: 'https://{s}.tile.thunderforest.com/{variant}/{z}/{x}/{y}.png?apikey={apikey}',
+			options: {
+				attribution:
+					'&copy; <a href="http://www.thunderforest.com/">Thunderforest</a>, {attribution.OpenStreetMap}',
+				variant: 'cycle',
+				apikey: '<insert your api key here>',
+				maxZoom: 22
+			},
+			variants: {
+				OpenCycleMap: 'cycle',
+				Transport: {
+					options: {
+						variant: 'transport'
+					}
+				},
+				TransportDark: {
+					options: {
+						variant: 'transport-dark'
+					}
+				},
+				SpinalMap: {
+					options: {
+						variant: 'spinal-map'
+					}
+				},
+				Landscape: 'landscape',
+				Outdoors: 'outdoors',
+				Pioneer: 'pioneer'
+			}
+		},
+		OpenMapSurfer: {
+			url: 'https://korona.geog.uni-heidelberg.de/tiles/{variant}/x={x}&y={y}&z={z}',
+			options: {
+				maxZoom: 20,
+				variant: 'roads',
+				attribution: 'Imagery from <a href="http://giscience.uni-hd.de/">GIScience Research Group @ University of Heidelberg</a> &mdash; Map data {attribution.OpenStreetMap}'
+			},
+			variants: {
+				Roads: 'roads',
+				AdminBounds: {
+					options: {
+						variant: 'adminb',
+						maxZoom: 19
+					}
+				},
+				Grayscale: {
+					options: {
+						variant: 'roadsg',
+						maxZoom: 19
+					}
+				}
+			}
+		},
+		Hydda: {
+			url: '//{s}.tile.openstreetmap.se/hydda/{variant}/{z}/{x}/{y}.png',
+			options: {
+				maxZoom: 18,
+				variant: 'full',
+				attribution: 'Tiles courtesy of <a href="http://openstreetmap.se/" target="_blank">OpenStreetMap Sweden</a> &mdash; Map data {attribution.OpenStreetMap}'
+			},
+			variants: {
+				Full: 'full',
+				Base: 'base',
+				RoadsAndLabels: 'roads_and_labels'
+			}
+		},
+		MapBox: {
+			url: 'https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}',
+			options: {
+				attribution:
+					'Imagery from <a href="http://mapbox.com/about/maps/">MapBox</a> &mdash; ' +
+					'Map data {attribution.OpenStreetMap}',
+				subdomains: 'abcd',
+				id: 'streets',
+				accessToken: '<insert your access token here>',
+			}
+		},
+		Stamen: {
+			url: '//stamen-tiles-{s}.a.ssl.fastly.net/{variant}/{z}/{x}/{y}.{ext}',
+			options: {
+				attribution:
+					'Map tiles by <a href="http://stamen.com">Stamen Design</a>, ' +
+					'<a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; ' +
+					'Map data {attribution.OpenStreetMap}',
+				subdomains: 'abcd',
+				minZoom: 0,
+				maxZoom: 20,
+				variant: 'toner',
+				ext: 'png'
+			},
+			variants: {
+				Toner: 'toner',
+				TonerBackground: 'toner-background',
+				TonerHybrid: 'toner-hybrid',
+				TonerLines: 'toner-lines',
+				TonerLabels: 'toner-labels',
+				TonerLite: 'toner-lite',
+				Watercolor: {
+					options: {
+						variant: 'watercolor',
+						minZoom: 1,
+						maxZoom: 16
+					}
+				},
+				Terrain: {
+					options: {
+						variant: 'terrain',
+						minZoom: 0,
+						maxZoom: 18
+					}
+				},
+				TerrainBackground: {
+					options: {
+						variant: 'terrain-background',
+						minZoom: 0,
+						maxZoom: 18
+					}
+				},
+				TopOSMRelief: {
+					options: {
+						variant: 'toposm-color-relief',
+						ext: 'jpg',
+						bounds: [[22, -132], [51, -56]]
+					}
+				},
+				TopOSMFeatures: {
+					options: {
+						variant: 'toposm-features',
+						bounds: [[22, -132], [51, -56]],
+						opacity: 0.9
+					}
+				}
+			}
+		},
+		Esri: {
+			url: '//server.arcgisonline.com/ArcGIS/rest/services/{variant}/MapServer/tile/{z}/{y}/{x}',
+			options: {
+				variant: 'World_Street_Map',
+				attribution: 'Tiles &copy; Esri'
+			},
+			variants: {
+				WorldStreetMap: {
+					options: {
+						attribution:
+							'{attribution.Esri} &mdash; ' +
+							'Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012'
+					}
+				},
+				DeLorme: {
+					options: {
+						variant: 'Specialty/DeLorme_World_Base_Map',
+						minZoom: 1,
+						maxZoom: 11,
+						attribution: '{attribution.Esri} &mdash; Copyright: &copy;2012 DeLorme'
+					}
+				},
+				WorldTopoMap: {
+					options: {
+						variant: 'World_Topo_Map',
+						attribution:
+							'{attribution.Esri} &mdash; ' +
+							'Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community'
+					}
+				},
+				WorldImagery: {
+					options: {
+						variant: 'World_Imagery',
+						attribution:
+							'{attribution.Esri} &mdash; ' +
+							'Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+					}
+				},
+				WorldTerrain: {
+					options: {
+						variant: 'World_Terrain_Base',
+						maxZoom: 13,
+						attribution:
+							'{attribution.Esri} &mdash; ' +
+							'Source: USGS, Esri, TANA, DeLorme, and NPS'
+					}
+				},
+				WorldShadedRelief: {
+					options: {
+						variant: 'World_Shaded_Relief',
+						maxZoom: 13,
+						attribution: '{attribution.Esri} &mdash; Source: Esri'
+					}
+				},
+				WorldPhysical: {
+					options: {
+						variant: 'World_Physical_Map',
+						maxZoom: 8,
+						attribution: '{attribution.Esri} &mdash; Source: US National Park Service'
+					}
+				},
+				OceanBasemap: {
+					options: {
+						variant: 'Ocean_Basemap',
+						maxZoom: 13,
+						attribution: '{attribution.Esri} &mdash; Sources: GEBCO, NOAA, CHS, OSU, UNH, CSUMB, National Geographic, DeLorme, NAVTEQ, and Esri'
+					}
+				},
+				NatGeoWorldMap: {
+					options: {
+						variant: 'NatGeo_World_Map',
+						maxZoom: 16,
+						attribution: '{attribution.Esri} &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC'
+					}
+				},
+				WorldGrayCanvas: {
+					options: {
+						variant: 'Canvas/World_Light_Gray_Base',
+						maxZoom: 16,
+						attribution: '{attribution.Esri} &mdash; Esri, DeLorme, NAVTEQ'
+					}
+				}
+			}
+		},
+		OpenWeatherMap: {
+			url: 'http://{s}.tile.openweathermap.org/map/{variant}/{z}/{x}/{y}.png?appid={apiKey}',
+			options: {
+				maxZoom: 19,
+				attribution: 'Map data &copy; <a href="http://openweathermap.org">OpenWeatherMap</a>',
+				apiKey:'<insert your api key here>',
+				opacity: 0.5
+			},
+			variants: {
+				Clouds: 'clouds',
+				CloudsClassic: 'clouds_cls',
+				Precipitation: 'precipitation',
+				PrecipitationClassic: 'precipitation_cls',
+				Rain: 'rain',
+				RainClassic: 'rain_cls',
+				Pressure: 'pressure',
+				PressureContour: 'pressure_cntr',
+				Wind: 'wind',
+				Temperature: 'temp',
+				Snow: 'snow'
+			}
+		},
+		HERE: {
+			/*
+			 * HERE maps, formerly Nokia maps.
+			 * These basemaps are free, but you need an API key. Please sign up at
+			 * http://developer.here.com/getting-started
+			 *
+			 * Note that the base urls contain '.cit' whichs is HERE's
+			 * 'Customer Integration Testing' environment. Please remove for production
+			 * envirionments.
+			 */
+			url:
+				'//{s}.{base}.maps.cit.api.here.com/maptile/2.1/' +
+				'{type}/{mapID}/{variant}/{z}/{x}/{y}/{size}/{format}?' +
+				'app_id={app_id}&app_code={app_code}&lg={language}',
+			options: {
+				attribution:
+					'Map &copy; 1987-2014 <a href="http://developer.here.com">HERE</a>',
+				subdomains: '1234',
+				mapID: 'newest',
+				'app_id': '<insert your app_id here>',
+				'app_code': '<insert your app_code here>',
+				base: 'base',
+				variant: 'normal.day',
+				maxZoom: 20,
+				type: 'maptile',
+				language: 'eng',
+				format: 'png8',
+				size: '256'
+			},
+			variants: {
+				normalDay: 'normal.day',
+				normalDayCustom: 'normal.day.custom',
+				normalDayGrey: 'normal.day.grey',
+				normalDayMobile: 'normal.day.mobile',
+				normalDayGreyMobile: 'normal.day.grey.mobile',
+				normalDayTransit: 'normal.day.transit',
+				normalDayTransitMobile: 'normal.day.transit.mobile',
+				normalNight: 'normal.night',
+				normalNightMobile: 'normal.night.mobile',
+				normalNightGrey: 'normal.night.grey',
+				normalNightGreyMobile: 'normal.night.grey.mobile',
+
+				basicMap: {
+					options: {
+						type: 'basetile'
+					}
+				},
+				mapLabels: {
+					options: {
+						type: 'labeltile',
+						format: 'png'
+					}
+				},
+				trafficFlow: {
+					options: {
+						base: 'traffic',
+						type: 'flowtile'
+					}
+				},
+				carnavDayGrey: 'carnav.day.grey',
+				hybridDay: {
+					options: {
+						base: 'aerial',
+						variant: 'hybrid.day'
+					}
+				},
+				hybridDayMobile: {
+					options: {
+						base: 'aerial',
+						variant: 'hybrid.day.mobile'
+					}
+				},
+				pedestrianDay: 'pedestrian.day',
+				pedestrianNight: 'pedestrian.night',
+				satelliteDay: {
+					options: {
+						base: 'aerial',
+						variant: 'satellite.day'
+					}
+				},
+				terrainDay: {
+					options: {
+						base: 'aerial',
+						variant: 'terrain.day'
+					}
+				},
+				terrainDayMobile: {
+					options: {
+						base: 'aerial',
+						variant: 'terrain.day.mobile'
+					}
+				}
+			}
+		},
+		FreeMapSK: {
+			url: 'http://t{s}.freemap.sk/T/{z}/{x}/{y}.jpeg',
+			options: {
+				minZoom: 8,
+				maxZoom: 16,
+				subdomains: '1234',
+				bounds: [[47.204642, 15.996093], [49.830896, 22.576904]],
+				attribution:
+					'{attribution.OpenStreetMap}, vizualization CC-By-SA 2.0 <a href="http://freemap.sk">Freemap.sk</a>'
+			}
+		},
+		MtbMap: {
+			url: 'http://tile.mtbmap.cz/mtbmap_tiles/{z}/{x}/{y}.png',
+			options: {
+				attribution:
+					'{attribution.OpenStreetMap} &amp; USGS'
+			}
+		},
+		CartoDB: {
+			url: 'https://cartodb-basemaps-{s}.global.ssl.fastly.net/{variant}/{z}/{x}/{y}.png',
+			options: {
+				attribution: '{attribution.OpenStreetMap} &copy; <a href="http://cartodb.com/attributions">CartoDB</a>',
+				subdomains: 'abcd',
+				maxZoom: 19,
+				variant: 'light_all'
+			},
+			variants: {
+				Positron: 'light_all',
+				PositronNoLabels: 'light_nolabels',
+				PositronOnlyLabels: 'light_only_labels',
+				DarkMatter: 'dark_all',
+				DarkMatterNoLabels: 'dark_nolabels',
+				DarkMatterOnlyLabels: 'dark_only_labels'
+			}
+		},
+		HikeBike: {
+			url: 'http://{s}.tiles.wmflabs.org/{variant}/{z}/{x}/{y}.png',
+			options: {
+				maxZoom: 19,
+				attribution: '{attribution.OpenStreetMap}',
+				variant: 'hikebike'
+			},
+			variants: {
+				HikeBike: {},
+				HillShading: {
+					options: {
+						maxZoom: 15,
+						variant: 'hillshading'
+					}
+				}
+			}
+		},
+		BasemapAT: {
+			url: '//maps{s}.wien.gv.at/basemap/{variant}/normal/google3857/{z}/{y}/{x}.{format}',
+			options: {
+				maxZoom: 19,
+				attribution: 'Datenquelle: <a href="https://www.basemap.at">basemap.at</a>',
+				subdomains: ['', '1', '2', '3', '4'],
+				format: 'png',
+				bounds: [[46.358770, 8.782379], [49.037872, 17.189532]],
+				variant: 'geolandbasemap'
+			},
+			variants: {
+				basemap: {
+					options: {
+						maxZoom: 20, // currently only in Vienna
+						variant: 'geolandbasemap'
+					}
+				},
+				grau: 'bmapgrau',
+				overlay: 'bmapoverlay',
+				highdpi: {
+					options: {
+						variant: 'bmaphidpi',
+						format: 'jpeg'
+					}
+				},
+				orthofoto: {
+					options: {
+						maxZoom: 20, // currently only in Vienna
+						variant: 'bmaporthofoto30cm',
+						format: 'jpeg'
+					}
+				}
+			}
+		},
+		nlmaps: {
+			url: '//geodata.nationaalgeoregister.nl/tiles/service/wmts/{variant}/EPSG:3857/{z}/{x}/{y}.png',
+			options: {
+				minZoom: 6,
+				maxZoom: 19,
+				bounds: [[50.5, 3.25], [54, 7.6]],
+				attribution: 'Kaartgegevens &copy; <a href="kadaster.nl">Kadaster</a>'
+			},
+			variants: {
+				'standaard': 'brtachtergrondkaart',
+				'pastel': 'brtachtergrondkaartpastel',
+				'grijs': 'brtachtergrondkaartgrijs',
+				'luchtfoto': {
+					'url': '//geodata.nationaalgeoregister.nl/luchtfoto/rgb/wmts/1.0.0/2016_ortho25/EPSG:3857/{z}/{x}/{y}.png',
+				}
+			}
+		},
+		NASAGIBS: {
+			url: 'https://map1.vis.earthdata.nasa.gov/wmts-webmerc/{variant}/default/{time}/{tilematrixset}{maxZoom}/{z}/{y}/{x}.{format}',
+			options: {
+				attribution:
+					'Imagery provided by services from the Global Imagery Browse Services (GIBS), operated by the NASA/GSFC/Earth Science Data and Information System ' +
+					'(<a href="https://earthdata.nasa.gov">ESDIS</a>) with funding provided by NASA/HQ.',
+				bounds: [[-85.0511287776, -179.999999975], [85.0511287776, 179.999999975]],
+				minZoom: 1,
+				maxZoom: 9,
+				format: 'jpg',
+				time: '',
+				tilematrixset: 'GoogleMapsCompatible_Level'
+			},
+			variants: {
+				ModisTerraTrueColorCR: 'MODIS_Terra_CorrectedReflectance_TrueColor',
+				ModisTerraBands367CR: 'MODIS_Terra_CorrectedReflectance_Bands367',
+				ViirsEarthAtNight2012: {
+					options: {
+						variant: 'VIIRS_CityLights_2012',
+						maxZoom: 8
+					}
+				},
+				ModisTerraLSTDay: {
+					options: {
+						variant: 'MODIS_Terra_Land_Surface_Temp_Day',
+						format: 'png',
+						maxZoom: 7,
+						opacity: 0.75
+					}
+				},
+				ModisTerraSnowCover: {
+					options: {
+						variant: 'MODIS_Terra_Snow_Cover',
+						format: 'png',
+						maxZoom: 8,
+						opacity: 0.75
+					}
+				},
+				ModisTerraAOD: {
+					options: {
+						variant: 'MODIS_Terra_Aerosol',
+						format: 'png',
+						maxZoom: 6,
+						opacity: 0.75
+					}
+				},
+				ModisTerraChlorophyll: {
+					options: {
+						variant: 'MODIS_Terra_Chlorophyll_A',
+						format: 'png',
+						maxZoom: 7,
+						opacity: 0.75
+					}
+				}
+			}
+		},
+		NLS: {
+			// NLS maps are copyright National library of Scotland.
+			// http://maps.nls.uk/projects/api/index.html
+			// Please contact NLS for anything other than non-commercial low volume usage
+			//
+			// Map sources: Ordnance Survey 1:1m to 1:63K, 1920s-1940s
+			//   z0-9  - 1:1m
+			//  z10-11 - quarter inch (1:253440)
+			//  z12-18 - one inch (1:63360)
+			url: '//nls-{s}.tileserver.com/nls/{z}/{x}/{y}.jpg',
+			options: {
+				attribution: '<a href="http://geo.nls.uk/maps/">National Library of Scotland Historic Maps</a>',
+				bounds: [[49.6, -12], [61.7, 3]],
+				minZoom: 1,
+				maxZoom: 18,
+				subdomains: '0123',
+			}
+		},
+		JusticeMap: {
+			// Justice Map (http://www.justicemap.org/)
+			// Visualize race and income data for your community, county and country.
+			// Includes tools for data journalists, bloggers and community activists.
+			url: 'http://www.justicemap.org/tile/{size}/{variant}/{z}/{x}/{y}.png',
+			options: {
+				attribution: '<a href="http://www.justicemap.org/terms.php">Justice Map</a>',
+				// one of 'county', 'tract', 'block'
+				size: 'county',
+				// Bounds for USA, including Alaska and Hawaii
+				bounds: [[14, -180], [72, -56]]
+			},
+			variants: {
+				income: 'income',
+				americanIndian: 'indian',
+				asian: 'asian',
+				black: 'black',
+				hispanic: 'hispanic',
+				multi: 'multi',
+				nonWhite: 'nonwhite',
+				white: 'white',
+				plurality: 'plural'
+			}
+		},
+		Wikimedia: {
+			url: 'https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png',
+			options: {
+				attribution: '<a href="https://wikimediafoundation.org/wiki/Maps_Terms_of_Use">Wikimedia</a>',
+				minZoom: 1,
+				maxZoom: 18
+			}
+		}
+	};
+
+	L.tileLayer.provider = function (provider, options) {
+		return new L.TileLayer.Provider(provider, options);
+	};
+
+	return L;
+}));
+</script>
+<script>LeafletWidget.methods.addProviderTiles = function(provider, layerId, group, options) {
+  this.layerManager.addLayer(L.tileLayer.provider(provider, options), "tile", layerId, group);
+};
+</script>
 <style type="text/css">.leaflet-cluster-anim .leaflet-marker-icon, .leaflet-cluster-anim .leaflet-marker-shadow {
 -webkit-transition: -webkit-transform 0.3s ease-out, opacity 0.3s ease-in;
 -moz-transition: -moz-transform 0.3s ease-out, opacity 0.3s ease-in;
@@ -3967,11 +4719,11 @@ line-height: 30px;
 </head>
 <body style="background-color: white;">
 <div id="htmlwidget_container">
-<div id="htmlwidget-1030db43e1ab8f905adc" class="leaflet html-widget" style="width:100%;height:400px;">
+<div id="htmlwidget-5992b085b6291497cab2" class="leaflet html-widget" style="width:100%;height:400px;">
 
 </div>
 </div>
-<script type="application/json" data-for="htmlwidget-1030db43e1ab8f905adc">{"x":{"options":{"minZoom":2,"crs":{"crsClass":"L.CRS.EPSG3857","code":null,"proj4def":null,"projectedBounds":null,"options":{}}},"calls":[{"method":"addTiles","args":["//{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",null,null,{"minZoom":0,"maxZoom":18,"tileSize":256,"subdomains":"abc","errorTileUrl":"","tms":false,"noWrap":false,"zoomOffset":0,"zoomReverse":false,"opacity":1,"zIndex":1,"detectRetina":false,"attribution":"&copy; <a href=\"http://openstreetmap.org\">OpenStreetMap<\/a> contributors, <a href=\"http://creativecommons.org/licenses/by-sa/2.0/\">CC-BY-SA<\/a>"}]},{"method":"addControl","args":["<h2><\/h2>","topright",null,"map-title"]},{"method":"addCircleMarkers","args":[[33.75,29.65,46.73,32.361,34.741,34.742,34.743,32.601,32.602,32.603,31.551,31.552,34.681,34.682,34.683,34.684,34.685,42.441,42.442,32.42,37.721,37.722,26.42,29.651,29.652,29.653,30.451,30.452,30.453,30.454,30.455,30.456,38.2,30.441,30.442,30.443,30.444,30.445,33.461,33.462,33.463,38.57,35.91,35.761,35.762,35.763,35.764,35.765,35.766,35.767,35.768,35.769,31.16,35.48,38.44,34.01,34.02,31.31,30.66,30.601,30.602,30.603,30.261,30.262,29.87,33.57,29.651,29.652,29.653,34.22,37.53,37.231,37.232,37.233,37.234,39.631,39.632],[-84.39,-82.32,-117,-86.27,-92.281,-92.282,-92.283,-85.481,-85.482,-85.483,-97.141,-97.142,-82.831,-82.832,-82.833,-82.834,-82.835,-76.501,-76.502,-90.13,-84.291,-84.292,-81.42,-82.321,-82.322,-82.323,-84.251,-84.252,-84.253,-84.254,-84.255,-84.256,-84.86,-91.171,-91.172,-91.173,-91.174,-91.175,-88.821,-88.822,-88.823,-92.17,-79.05,-78.631,-78.632,-78.633,-78.634,-78.635,-78.636,-78.637,-78.638,-78.639,-97.56,-97.53,-78.86,-81.031,-81.032,-89.3,-81.46,-96.311,-96.312,-96.313,-97.731,-97.732,-97.93,-101.89,-82.321,-82.322,-82.323,-77.91,-77.46,-80.411,-80.412,-80.413,-80.414,-79.951,-79.952],9,null,null,{"interactive":true,"className":"","stroke":false,"color":["#51A959","#77916D","#F283BD","#E41A1C","#CE4542","#CE4542","#CE4542","#B35C66","#B35C66","#B35C66","#8F6D8A","#8F6D8A","#547BAF","#547BAF","#547BAF","#547BAF","#547BAF","#4686A6","#4686A6","#50928E","#539D74","#539D74","#51A959","#5FA557","#5FA557","#5FA557","#77916D","#77916D","#77916D","#77916D","#77916D","#77916D","#877B82","#926395","#A0509C","#A0509C","#A0509C","#A0509C","#BE5A7F","#BE5A7F","#BE5A7F","#D66662","#EB7240","#FF7F00","#FF7F00","#FF7F00","#FF7F00","#FF7F00","#FF9F0C","#FF9F0C","#FF9F0C","#FF9F0C","#FFBE19","#FFDB25","#FFF830","#F0E033","#F0E033","#DCB831","#C7912E","#B16A2A","#B16A2A","#B16A2A","#B05B3A","#B05B3A","#C4645D","#D76F80","#EA79A3","#EA79A3","#EA79A3","#DD8BB4","#C791AB","#B195A2","#B195A2","#B195A2","#B195A2","#999999","#999999"],"weight":5,"opacity":0.5,"fill":true,"fillColor":["#51A959","#77916D","#F283BD","#E41A1C","#CE4542","#CE4542","#CE4542","#B35C66","#B35C66","#B35C66","#8F6D8A","#8F6D8A","#547BAF","#547BAF","#547BAF","#547BAF","#547BAF","#4686A6","#4686A6","#50928E","#539D74","#539D74","#51A959","#5FA557","#5FA557","#5FA557","#77916D","#77916D","#77916D","#77916D","#77916D","#77916D","#877B82","#926395","#A0509C","#A0509C","#A0509C","#A0509C","#BE5A7F","#BE5A7F","#BE5A7F","#D66662","#EB7240","#FF7F00","#FF7F00","#FF7F00","#FF7F00","#FF7F00","#FF9F0C","#FF9F0C","#FF9F0C","#FF9F0C","#FFBE19","#FFDB25","#FFF830","#F0E033","#F0E033","#DCB831","#C7912E","#B16A2A","#B16A2A","#B16A2A","#B05B3A","#B05B3A","#C4645D","#D76F80","#EA79A3","#EA79A3","#EA79A3","#DD8BB4","#C791AB","#B195A2","#B195A2","#B195A2","#B195A2","#999999","#999999"],"fillOpacity":0.7},{"showCoverageOnHover":true,"zoomToBoundsOnClick":true,"spiderfyOnMaxZoom":true,"removeOutsideVisibleBounds":true,"spiderLegPolylineOptions":{"weight":1.5,"color":"#222","opacity":0.5},"freezeAtZoom":8},null,["<strong>First.Name<\/strong>: Wylie<br/><strong>Last.Name<\/strong>: Carr<br/><strong>Position<\/strong>: Social Scientist<br/><strong>Organization<\/strong>: Fish & Wildlife Service<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Atlanta<br/><strong>State<\/strong>: GA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: https://www.linkedin.com/in/wylie-carr-555b36ab/<br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='wylie_carr@fws.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Nia<br/><strong>Last.Name<\/strong>: Morales<br/><strong>Position<\/strong>: Conservation Social Scientist<br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>Unit<\/strong>: Fish and Wildlife Research Institute<br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: https://www.linkedin.com/in/nia-morales-779ab564/<br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='Nia.Morales@myFWC.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Kenny<br/><strong>Last.Name<\/strong>: Wallen<br/><strong>Position<\/strong>: Assistant Professor<br/><strong>Organization<\/strong>: University of Idaho<br/><strong>Unit<\/strong>: Natural Resources and Society Department<br/><strong>City<\/strong>: Moscow<br/><strong>State<\/strong>: ID<br/><strong>Website..Institutional.<\/strong>: https://www.uidaho.edu/cnr/departments/natural-resources-and-society/our-people<br/><strong>Website..Personal.<\/strong>: https://www.human-element-lab.com/<br/><strong>LinkedIn<\/strong>: https://www.linkedin.com/in/kenneth-wallen-35885036/<br/><strong>Twitter<\/strong>: https://twitter.com/wallenk3<br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='wallenk3@gmail.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Amy<br/><strong>Last.Name<\/strong>: Silvano<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Alabama Department of Conservation and Natural Resources<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Montgomery<br/><strong>State<\/strong>: AL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Chris<br/><strong>Last.Name<\/strong>: Colclasure<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Arkansas Game and Fish Commission<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Little Rock<br/><strong>State<\/strong>: AR<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='chris.colclasure@agfc.ar.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Jessica<br/><strong>Last.Name<\/strong>: Feltz<br/><strong>Position<\/strong>: Fisheries Survey Coordinator<br/><strong>Organization<\/strong>: Arkansas Game and Fish Commission<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Little Rock<br/><strong>State<\/strong>: AR<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='Jessica.Feltz@agfc.ar.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ashley<br/><strong>Last.Name<\/strong>: Gramza<br/><strong>Position<\/strong>: Human Dimensions Specialist<br/><strong>Organization<\/strong>: Arkansas Game and Fish Commission<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Little Rock<br/><strong>State<\/strong>: AR<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='agramza@vt.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Christopher<br/><strong>Last.Name<\/strong>: Anderson<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Auburn<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Auburn<br/><strong>State<\/strong>: AL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Cody<br/><strong>Last.Name<\/strong>: Cox<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Auburn<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Auburn<br/><strong>State<\/strong>: AL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='cmc0059@tigermail.auburn.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Wayne<br/><strong>Last.Name<\/strong>: Morse<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Auburn<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Auburn<br/><strong>State<\/strong>: AL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Kelli<br/><strong>Last.Name<\/strong>: McMahan<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Baylor<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Waco<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Chris<br/><strong>Last.Name<\/strong>: Wnyveen<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Baylor<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Waco<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Wayne<br/><strong>Last.Name<\/strong>: Freimund<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Clemson<br/><strong>Unit<\/strong>: Department of Parks, Recreation & Tourism Management<br/><strong>City<\/strong>: Clemson<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='wfreimu@clemson.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Jeffrey<br/><strong>Last.Name<\/strong>: Hallo<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Clemson<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Clemson<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='jhallo@clemson.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Drew<br/><strong>Last.Name<\/strong>: Lanham<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Clemson<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Clemson<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Robert<br/><strong>Last.Name<\/strong>: Powell<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Clemson<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Clemson<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Julia<br/><strong>Last.Name<\/strong>: Sharp<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Clemson<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Clemson<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Bruce<br/><strong>Last.Name<\/strong>: Lauber<br/><strong>Position<\/strong>: Director, Center for Conservation Social Sciences<br/><strong>Organization<\/strong>: Cornell<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Ithaca<br/><strong>State<\/strong>: NY<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='tbl3@cornell.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Rich<br/><strong>Last.Name<\/strong>: Stedman<br/><strong>Position<\/strong>: Professor<br/><strong>Organization<\/strong>: Cornell<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Ithaca<br/><strong>State<\/strong>: NY<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='rcs6@cornell.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Cynthia<br/><strong>Last.Name<\/strong>: Edwards<br/><strong>Position<\/strong>: Ag. Econ<br/><strong>Organization<\/strong>: Ducks Unlimited<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Ridgeland<br/><strong>State<\/strong>: MS<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Robert<br/><strong>Last.Name<\/strong>: Lakes<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Eastern Kentucy<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Richmond<br/><strong>State<\/strong>: KY<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='robert_Lakes6@eku.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ryan<br/><strong>Last.Name<\/strong>: Sharp<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Eastern Kentucy<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Richmond<br/><strong>State<\/strong>: KY<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Jessica<br/><strong>Last.Name<\/strong>: Sutt<br/><strong>Position<\/strong>: Wildlife Refuge Specialist<br/><strong>Organization<\/strong>: Fish & Wildlife Service<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Immokalee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='jessica_sutt@fws.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Rebecca<br/><strong>Last.Name<\/strong>: Harvey<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Florida<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Martha<br/><strong>Last.Name<\/strong>: Monroe<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Florida<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Elizabeth<br/><strong>Last.Name<\/strong>: Pienaar<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Florida<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ann<br/><strong>Last.Name<\/strong>: Forstchen<br/><strong>Position<\/strong>: HD Coordinator<br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Tallahassee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='ann.forstchen@myfwc.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: R. Blair<br/><strong>Last.Name<\/strong>: Hayman<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Tallahassee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='blair.hayman@myfwc.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Julian<br/><strong>Last.Name<\/strong>: Hwang<br/><strong>Position<\/strong>: Chief Economist<br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>Unit<\/strong>: Fisheries and Wildlife Research Institute<br/><strong>City<\/strong>: Tallahassee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='Joonghyun.Hwang@MyFWC.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Seth<br/><strong>Last.Name<\/strong>: Lutter<br/><strong>Position<\/strong>: Human Dimensions Specialist<br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>Unit<\/strong>: Habitat and Species Conservation<br/><strong>City<\/strong>: Tallahassee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='seth.lutter@myfwc.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ramesh<br/><strong>Last.Name<\/strong>: Paudyal<br/><strong>Position<\/strong>: Human Dimensions Specialist<br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>Unit<\/strong>: Habitat and Species Conservation<br/><strong>City<\/strong>: Tallahassee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='ramesh.paudyal@myfwc.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Phillip<br/><strong>Last.Name<\/strong>: Rodgers<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Tallahassee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Brian<br/><strong>Last.Name<\/strong>: Clark<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Kentucky<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Frankfort<br/><strong>State<\/strong>: KY<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='brian.clark@ky.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Jack<br/><strong>Last.Name<\/strong>: Isaacs<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Louisiana Department of Wildlife and Fisheries<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Baton Rouge<br/><strong>State<\/strong>: LA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='jisaacs@wlf.la.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Rex<br/><strong>Last.Name<\/strong>: Caffey<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: LSU<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Baton Rouge<br/><strong>State<\/strong>: LA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Matthew<br/><strong>Last.Name<\/strong>: Fannin<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: LSU<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Baton Rouge<br/><strong>State<\/strong>: LA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Luke<br/><strong>Last.Name<\/strong>: Laborde<br/><strong>Position<\/strong>: Research Scientist<br/><strong>Organization<\/strong>: LSU<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Baton Rouge<br/><strong>State<\/strong>: LA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='llabor2@lsu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Michelle<br/><strong>Last.Name<\/strong>: Savolainen<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: LSU<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Baton Rouge<br/><strong>State<\/strong>: LA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='msavolainen@agcenter.lsu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Kevin<br/><strong>Last.Name<\/strong>: Hunt<br/><strong>Position<\/strong>: Professor<br/><strong>Organization<\/strong>: Mississippi State<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Starkville<br/><strong>State<\/strong>: MS<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='kevin.hunt@msstate.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ian<br/><strong>Last.Name<\/strong>: Munn<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Mississippi State<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Starkville<br/><strong>State<\/strong>: MS<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='imunn@cfr.msstate.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Shannon<br/><strong>Last.Name<\/strong>: Westlake<br/><strong>Position<\/strong>: Ph.D. Student<br/><strong>Organization<\/strong>: Mississippi State<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Starkville<br/><strong>State<\/strong>: MS<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='smw750@msstate.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ron<br/><strong>Last.Name<\/strong>: Reitz<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Missouri Department of Conservation<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Jefferson City<br/><strong>State<\/strong>: MO<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Janet<br/><strong>Last.Name<\/strong>: Cakir<br/><strong>Position<\/strong>: Climate Change, Socioeconomics, and Adaptation Coordinator<br/><strong>Organization<\/strong>: National Park Service<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Chapel Hill<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='janet_cakir@nps.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Colter<br/><strong>Last.Name<\/strong>: Chitwood<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC State<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Merril<br/><strong>Last.Name<\/strong>: Cook<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC State<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='macook3@ncsu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Nils<br/><strong>Last.Name<\/strong>: Peterson<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC State<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='nils_peterson@ncsu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Erin<br/><strong>Last.Name<\/strong>: Seekamp<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC State<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='elseekam@ncsu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Louise<br/><strong>Last.Name<\/strong>: Vaughn<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC State<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='l_vaughn@ncsu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: David<br/><strong>Last.Name<\/strong>: Cobb<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC Wildlife Resources Commission<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Maria<br/><strong>Last.Name<\/strong>: Palamar<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC Wildlife Resources Commission<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='maria.palamar@ncwildlife.org'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Dain<br/><strong>Last.Name<\/strong>: Palmer<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC Wildlife Resources Commission<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Carrie<br/><strong>Last.Name<\/strong>: Ruhlman<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC Wildlife Resources Commission<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='carrie.ruhlman@ncwildlife.org'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Dan<br/><strong>Last.Name<\/strong>: Keesee<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NRCS Texas<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Temple<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Corey<br/><strong>Last.Name<\/strong>: Jager<br/><strong>Position<\/strong>: Legislative Liaison/HD Specialist<br/><strong>Organization<\/strong>: Oklahoma DWC<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Oklahoma City<br/><strong>State<\/strong>: OK<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='corey.jager@odwc.ok.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Mark<br/><strong>Last.Name<\/strong>: Duda<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Responsive Management<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Harrisonburg<br/><strong>State<\/strong>: VA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='mark@responsivemanagement.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Amanda<br/><strong>Last.Name<\/strong>: Stroud<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: South Carolina<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Columbia<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='strouda@dnr.sc.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Jayme<br/><strong>Last.Name<\/strong>: Waldron<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: South Carolina<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Columbia<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='awaldron3@marshall.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Frank<br/><strong>Last.Name<\/strong>: Moore<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Southern Miss<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Hattiesburg<br/><strong>State<\/strong>: MS<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Rob<br/><strong>Last.Name<\/strong>: Southwick<br/><strong>Position<\/strong>: President<br/><strong>Organization<\/strong>: Southwick Associates<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Fernandina Beach<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='rob@southwickassociates.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Jesse<br/><strong>Last.Name<\/strong>: Backstrom<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Texas A&M<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: College Station<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Michael<br/><strong>Last.Name<\/strong>: Schuett<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Texas A&M<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: College Station<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='mschuett@tamu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: David<br/><strong>Last.Name<\/strong>: Scott<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Texas A&M<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: College Station<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='dscott@tamu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ken<br/><strong>Last.Name<\/strong>: Kurzawski<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Texas Parks & Wildlife<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Austin<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='ken.kurzawski@tpwd.texas.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: John<br/><strong>Last.Name<\/strong>: Taylor<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Texas Parks & Wildlife<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Austin<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='john.taylor@tpwd.texas.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Chris<br/><strong>Last.Name<\/strong>: Serenari<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Texas State University<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: San Marcos<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='c_s754@txstate.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Samantha<br/><strong>Last.Name<\/strong>: Kahl<br/><strong>Position<\/strong>: Assistant Professor<br/><strong>Organization<\/strong>: Texas Tech University<br/><strong>Unit<\/strong>: Department of Natural Resources Management<br/><strong>City<\/strong>: Lubbock<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='samantha.kahl@ttu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Chelsey<br/><strong>Last.Name<\/strong>: Crandall<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: University of Florida<br/><strong>Unit<\/strong>: Fisheries and Aquatic Sciences<br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='kicksea@ufl.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Susan<br/><strong>Last.Name<\/strong>: Jacobson<br/><strong>Position<\/strong>: Professor<br/><strong>Organization<\/strong>: University of Florida<br/><strong>Unit<\/strong>: Wildlife Ecology and Conservation<br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='jacobson@ufl.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Kai<br/><strong>Last.Name<\/strong>: Lorenzen<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: University of Florida<br/><strong>Unit<\/strong>: Fisheries and Aquatic Sciences<br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Troy<br/><strong>Last.Name<\/strong>: Frensley<br/><strong>Position<\/strong>: Asst Professor<br/><strong>Organization<\/strong>: University of North Carolina Wilmington<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Wilmington<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='frensleyb@uncw.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Rene<br/><strong>Last.Name<\/strong>: Valdez<br/><strong>Position<\/strong>: Human Dimensions Specialist<br/><strong>Organization<\/strong>: Virginia Department of Game and Inland Fisheries<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Henrico<br/><strong>State<\/strong>: VA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='rene.valdez@dgif.virginia.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Amy<br/><strong>Last.Name<\/strong>: Carrozzino-Lyon<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Virginia Tech<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Blacksburg<br/><strong>State<\/strong>: VA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='acarroz@vt.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ashley<br/><strong>Last.Name<\/strong>: Dayer<br/><strong>Position<\/strong>: Asst Professor<br/><strong>Organization<\/strong>: Virginia Tech<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Blacksburg<br/><strong>State<\/strong>: VA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='dayer@vt.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Michael<br/><strong>Last.Name<\/strong>: Sorice<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Virginia Tech<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Blacksburg<br/><strong>State<\/strong>: VA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Marc<br/><strong>Last.Name<\/strong>: Stern<br/><strong>Position<\/strong>: Professor<br/><strong>Organization<\/strong>: Virginia Tech<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Blacksburg<br/><strong>State<\/strong>: VA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='mjstern@vt.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Robert<br/><strong>Last.Name<\/strong>: Burns<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: West Virginia University<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Morgantown<br/><strong>State<\/strong>: WV<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Chad<br/><strong>Last.Name<\/strong>: Pierskalla<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: West Virginia University<br/><strong>Unit<\/strong>: <br/><strong>City<\/strong>: Morgantown<br/><strong>State<\/strong>: WV<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='Chad.Pierskalla@mail.wvu.edu'>Link to paper<\/a><\/strong>"],null,null,{"interactive":false,"permanent":false,"direction":"auto","opacity":1,"offset":[0,0],"textsize":"10px","textOnly":false,"className":"","sticky":true},null]}],"limits":{"lat":[26.42,46.73],"lng":[-117,-76.501]}},"evals":[],"jsHooks":[]}</script>
-<script type="application/htmlwidget-sizing" data-for="htmlwidget-1030db43e1ab8f905adc">{"viewer":{"width":"100%","height":400,"padding":0,"fill":true},"browser":{"width":"100%","height":400,"padding":0,"fill":true}}</script>
+<script type="application/json" data-for="htmlwidget-5992b085b6291497cab2">{"x":{"options":{"minZoom":2,"crs":{"crsClass":"L.CRS.EPSG3857","code":null,"proj4def":null,"projectedBounds":null,"options":{}}},"calls":[{"method":"addProviderTiles","args":["Stamen.TonerLite",null,null,{"errorTileUrl":"","noWrap":false,"detectRetina":false}]},{"method":"addControl","args":["<h2><\/h2>","topright",null,"map-title"]},{"method":"addCircleMarkers","args":[[33.75,29.65,46.73,32.361,34.741,34.742,34.743,32.601,32.602,32.603,31.551,31.552,34.681,34.682,34.683,34.684,34.685,42.441,42.442,32.42,37.721,37.722,26.42,29.651,29.652,29.653,30.451,30.452,30.453,30.454,30.455,30.456,38.2,30.441,30.442,30.443,30.444,30.445,33.461,33.462,33.463,38.57,35.91,35.761,35.762,35.763,35.764,35.765,35.766,35.767,35.768,35.769,31.16,35.48,38.44,34.01,34.02,31.31,30.66,30.601,30.602,30.603,30.261,30.262,29.87,33.57,29.651,29.652,29.653,34.22,37.53,37.231,37.232,37.233,37.234,39.631,39.632],[-84.39,-82.32,-117,-86.27,-92.281,-92.282,-92.283,-85.481,-85.482,-85.483,-97.141,-97.142,-82.831,-82.832,-82.833,-82.834,-82.835,-76.501,-76.502,-90.13,-84.291,-84.292,-81.42,-82.321,-82.322,-82.323,-84.251,-84.252,-84.253,-84.254,-84.255,-84.256,-84.86,-91.171,-91.172,-91.173,-91.174,-91.175,-88.821,-88.822,-88.823,-92.17,-79.05,-78.631,-78.632,-78.633,-78.634,-78.635,-78.636,-78.637,-78.638,-78.639,-97.56,-97.53,-78.86,-81.031,-81.032,-89.3,-81.46,-96.311,-96.312,-96.313,-97.731,-97.732,-97.93,-101.89,-82.321,-82.322,-82.323,-77.91,-77.46,-80.411,-80.412,-80.413,-80.414,-79.951,-79.952],9,null,null,{"interactive":true,"className":"","stroke":false,"color":["#999999","#B9772C","#B894A5","#E41A1C","#539A7D","#BE5A7F","#C54E4E","#E41A1C","#53A16C","#E41A1C","#E41A1C","#E41A1C","#A9979F","#CE626C","#E41A1C","#E41A1C","#E41A1C","#C791AB","#BE6151","#E41A1C","#E47597","#E41A1C","#AB5492","#E41A1C","#E41A1C","#E41A1C","#B35C66","#807296","#F97B21","#F283BD","#B05B3A","#E41A1C","#547BAF","#DD6A57","#E41A1C","#E41A1C","#FFDB25","#D5AB30","#FF9F0C","#8B7488","#E488B7","#E41A1C","#9751A1","#E41A1C","#FFEE2C","#AA5D29","#77916D","#FFC71D","#E41A1C","#FDFC33","#E41A1C","#4B8A9E","#E41A1C","#51A959","#F0E033","#D58DB1","#9D687E","#E41A1C","#D76F80","#E41A1C","#C7912E","#689F5F","#FF8A03","#EB7240","#4183AE","#F07DB0","#FFB415","#926395","#E41A1C","#82837B","#CB6868","#D53B36","#54AC4E","#E41A1C","#E3C532","#E41A1C","#50928E"],"weight":5,"opacity":0.5,"fill":true,"fillColor":["#999999","#B9772C","#B894A5","#E41A1C","#539A7D","#BE5A7F","#C54E4E","#E41A1C","#53A16C","#E41A1C","#E41A1C","#E41A1C","#A9979F","#CE626C","#E41A1C","#E41A1C","#E41A1C","#C791AB","#BE6151","#E41A1C","#E47597","#E41A1C","#AB5492","#E41A1C","#E41A1C","#E41A1C","#B35C66","#807296","#F97B21","#F283BD","#B05B3A","#E41A1C","#547BAF","#DD6A57","#E41A1C","#E41A1C","#FFDB25","#D5AB30","#FF9F0C","#8B7488","#E488B7","#E41A1C","#9751A1","#E41A1C","#FFEE2C","#AA5D29","#77916D","#FFC71D","#E41A1C","#FDFC33","#E41A1C","#4B8A9E","#E41A1C","#51A959","#F0E033","#D58DB1","#9D687E","#E41A1C","#D76F80","#E41A1C","#C7912E","#689F5F","#FF8A03","#EB7240","#4183AE","#F07DB0","#FFB415","#926395","#E41A1C","#82837B","#CB6868","#D53B36","#54AC4E","#E41A1C","#E3C532","#E41A1C","#50928E"],"fillOpacity":0.7},{"showCoverageOnHover":true,"zoomToBoundsOnClick":true,"spiderfyOnMaxZoom":true,"removeOutsideVisibleBounds":true,"spiderLegPolylineOptions":{"weight":1.5,"color":"#222","opacity":0.5},"freezeAtZoom":7},null,["<strong>First.Name<\/strong>: Wylie<br/><strong>Last.Name<\/strong>: Carr<br/><strong>Email<\/strong>: wylie_carr@fws.gov<br/><strong>Position<\/strong>: Social Scientist<br/><strong>Organization<\/strong>: Fish & Wildlife Service<br/><strong>City<\/strong>: Atlanta<br/><strong>State<\/strong>: GA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: https://www.linkedin.com/in/wylie-carr-555b36ab/<br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='wylie_carr@fws.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Nia<br/><strong>Last.Name<\/strong>: Morales<br/><strong>Email<\/strong>: Nia.Morales@myFWC.com<br/><strong>Position<\/strong>: Conservation Social Scientist<br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: https://www.linkedin.com/in/nia-morales-779ab564/<br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='Nia.Morales@myFWC.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Kenny<br/><strong>Last.Name<\/strong>: Wallen<br/><strong>Email<\/strong>: wallenk3@gmail.com<br/><strong>Position<\/strong>: Assistant Professor<br/><strong>Organization<\/strong>: University of Idaho<br/><strong>City<\/strong>: Moscow<br/><strong>State<\/strong>: ID<br/><strong>Website..Institutional.<\/strong>: https://www.uidaho.edu/cnr/departments/natural-resources-and-society/our-people<br/><strong>Website..Personal.<\/strong>: https://www.human-element-lab.com/<br/><strong>LinkedIn<\/strong>: https://www.linkedin.com/in/kenneth-wallen-35885036/<br/><strong>Twitter<\/strong>: https://twitter.com/wallenk3<br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='wallenk3@gmail.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Amy<br/><strong>Last.Name<\/strong>: Silvano<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Alabama Department of Conservation and Natural Resources<br/><strong>City<\/strong>: Montgomery<br/><strong>State<\/strong>: AL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Chris<br/><strong>Last.Name<\/strong>: Colclasure<br/><strong>Email<\/strong>: chris.colclasure@agfc.ar.gov<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Arkansas Game and Fish Commission<br/><strong>City<\/strong>: Little Rock<br/><strong>State<\/strong>: AR<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='chris.colclasure@agfc.ar.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Jessica<br/><strong>Last.Name<\/strong>: Feltz<br/><strong>Email<\/strong>: Jessica.Feltz@agfc.ar.gov<br/><strong>Position<\/strong>: Fisheries Survey Coordinator<br/><strong>Organization<\/strong>: Arkansas Game and Fish Commission<br/><strong>City<\/strong>: Little Rock<br/><strong>State<\/strong>: AR<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='Jessica.Feltz@agfc.ar.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ashley<br/><strong>Last.Name<\/strong>: Gramza<br/><strong>Email<\/strong>: agramza@vt.edu<br/><strong>Position<\/strong>: Human Dimensions Specialist<br/><strong>Organization<\/strong>: Arkansas Game and Fish Commission<br/><strong>City<\/strong>: Little Rock<br/><strong>State<\/strong>: AR<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='agramza@vt.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Christopher<br/><strong>Last.Name<\/strong>: Anderson<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Auburn<br/><strong>City<\/strong>: Auburn<br/><strong>State<\/strong>: AL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Cody<br/><strong>Last.Name<\/strong>: Cox<br/><strong>Email<\/strong>: cmc0059@tigermail.auburn.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Auburn<br/><strong>City<\/strong>: Auburn<br/><strong>State<\/strong>: AL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='cmc0059@tigermail.auburn.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Wayne<br/><strong>Last.Name<\/strong>: Morse<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Auburn<br/><strong>City<\/strong>: Auburn<br/><strong>State<\/strong>: AL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Kelli<br/><strong>Last.Name<\/strong>: McMahan<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Baylor<br/><strong>City<\/strong>: Waco<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Chris<br/><strong>Last.Name<\/strong>: Wnyveen<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Baylor<br/><strong>City<\/strong>: Waco<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Wayne<br/><strong>Last.Name<\/strong>: Freimund<br/><strong>Email<\/strong>: wfreimu@clemson.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Clemson<br/><strong>City<\/strong>: Clemson<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='wfreimu@clemson.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Jeffrey<br/><strong>Last.Name<\/strong>: Hallo<br/><strong>Email<\/strong>: jhallo@clemson.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Clemson<br/><strong>City<\/strong>: Clemson<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='jhallo@clemson.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Drew<br/><strong>Last.Name<\/strong>: Lanham<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Clemson<br/><strong>City<\/strong>: Clemson<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Robert<br/><strong>Last.Name<\/strong>: Powell<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Clemson<br/><strong>City<\/strong>: Clemson<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Julia<br/><strong>Last.Name<\/strong>: Sharp<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Clemson<br/><strong>City<\/strong>: Clemson<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Bruce<br/><strong>Last.Name<\/strong>: Lauber<br/><strong>Email<\/strong>: tbl3@cornell.edu<br/><strong>Position<\/strong>: Director, Center for Conservation Social Sciences<br/><strong>Organization<\/strong>: Cornell<br/><strong>City<\/strong>: Ithaca<br/><strong>State<\/strong>: NY<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='tbl3@cornell.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Rich<br/><strong>Last.Name<\/strong>: Stedman<br/><strong>Email<\/strong>: rcs6@cornell.edu<br/><strong>Position<\/strong>: Professor<br/><strong>Organization<\/strong>: Cornell<br/><strong>City<\/strong>: Ithaca<br/><strong>State<\/strong>: NY<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='rcs6@cornell.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Cynthia<br/><strong>Last.Name<\/strong>: Edwards<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: Ag. Econ<br/><strong>Organization<\/strong>: Ducks Unlimited<br/><strong>City<\/strong>: Ridgeland<br/><strong>State<\/strong>: MS<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Robert<br/><strong>Last.Name<\/strong>: Lakes<br/><strong>Email<\/strong>: robert_Lakes6@eku.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Eastern Kentucy<br/><strong>City<\/strong>: Richmond<br/><strong>State<\/strong>: KY<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='robert_Lakes6@eku.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ryan<br/><strong>Last.Name<\/strong>: Sharp<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Eastern Kentucy<br/><strong>City<\/strong>: Richmond<br/><strong>State<\/strong>: KY<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Jessica<br/><strong>Last.Name<\/strong>: Sutt<br/><strong>Email<\/strong>: jessica_sutt@fws.gov<br/><strong>Position<\/strong>: Wildlife Refuge Specialist<br/><strong>Organization<\/strong>: Fish & Wildlife Service<br/><strong>City<\/strong>: Immokalee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='jessica_sutt@fws.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Rebecca<br/><strong>Last.Name<\/strong>: Harvey<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Florida<br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Martha<br/><strong>Last.Name<\/strong>: Monroe<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Florida<br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Elizabeth<br/><strong>Last.Name<\/strong>: Pienaar<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Florida<br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ann<br/><strong>Last.Name<\/strong>: Forstchen<br/><strong>Email<\/strong>: ann.forstchen@myfwc.com<br/><strong>Position<\/strong>: HD Coordinator<br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>City<\/strong>: Tallahassee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='ann.forstchen@myfwc.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: R. Blair<br/><strong>Last.Name<\/strong>: Hayman<br/><strong>Email<\/strong>: blair.hayman@myfwc.com<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>City<\/strong>: Tallahassee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='blair.hayman@myfwc.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Julian<br/><strong>Last.Name<\/strong>: Hwang<br/><strong>Email<\/strong>: Joonghyun.Hwang@MyFWC.com<br/><strong>Position<\/strong>: Chief Economist<br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>City<\/strong>: Tallahassee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='Joonghyun.Hwang@MyFWC.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Seth<br/><strong>Last.Name<\/strong>: Lutter<br/><strong>Email<\/strong>: seth.lutter@myfwc.com<br/><strong>Position<\/strong>: Human Dimensions Specialist<br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>City<\/strong>: Tallahassee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='seth.lutter@myfwc.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ramesh<br/><strong>Last.Name<\/strong>: Paudyal<br/><strong>Email<\/strong>: ramesh.paudyal@myfwc.com<br/><strong>Position<\/strong>: Human Dimensions Specialist<br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>City<\/strong>: Tallahassee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='ramesh.paudyal@myfwc.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Phillip<br/><strong>Last.Name<\/strong>: Rodgers<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Florida Fish and Wildlife Conservation Commission<br/><strong>City<\/strong>: Tallahassee<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Brian<br/><strong>Last.Name<\/strong>: Clark<br/><strong>Email<\/strong>: brian.clark@ky.gov<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Kentucky<br/><strong>City<\/strong>: Frankfort<br/><strong>State<\/strong>: KY<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='brian.clark@ky.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Jack<br/><strong>Last.Name<\/strong>: Isaacs<br/><strong>Email<\/strong>: jisaacs@wlf.la.gov<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Louisiana Department of Wildlife and Fisheries<br/><strong>City<\/strong>: Baton Rouge<br/><strong>State<\/strong>: LA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='jisaacs@wlf.la.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Rex<br/><strong>Last.Name<\/strong>: Caffey<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: LSU<br/><strong>City<\/strong>: Baton Rouge<br/><strong>State<\/strong>: LA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Matthew<br/><strong>Last.Name<\/strong>: Fannin<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: LSU<br/><strong>City<\/strong>: Baton Rouge<br/><strong>State<\/strong>: LA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Luke<br/><strong>Last.Name<\/strong>: Laborde<br/><strong>Email<\/strong>: llabor2@lsu.edu<br/><strong>Position<\/strong>: Research Scientist<br/><strong>Organization<\/strong>: LSU<br/><strong>City<\/strong>: Baton Rouge<br/><strong>State<\/strong>: LA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='llabor2@lsu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Michelle<br/><strong>Last.Name<\/strong>: Savolainen<br/><strong>Email<\/strong>: msavolainen@agcenter.lsu.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: LSU<br/><strong>City<\/strong>: Baton Rouge<br/><strong>State<\/strong>: LA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='msavolainen@agcenter.lsu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Kevin<br/><strong>Last.Name<\/strong>: Hunt<br/><strong>Email<\/strong>: kevin.hunt@msstate.edu<br/><strong>Position<\/strong>: Professor<br/><strong>Organization<\/strong>: Mississippi State<br/><strong>City<\/strong>: Starkville<br/><strong>State<\/strong>: MS<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='kevin.hunt@msstate.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ian<br/><strong>Last.Name<\/strong>: Munn<br/><strong>Email<\/strong>: imunn@cfr.msstate.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Mississippi State<br/><strong>City<\/strong>: Starkville<br/><strong>State<\/strong>: MS<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='imunn@cfr.msstate.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Shannon<br/><strong>Last.Name<\/strong>: Westlake<br/><strong>Email<\/strong>: smw750@msstate.edu<br/><strong>Position<\/strong>: Ph.D. Student<br/><strong>Organization<\/strong>: Mississippi State<br/><strong>City<\/strong>: Starkville<br/><strong>State<\/strong>: MS<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='smw750@msstate.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ron<br/><strong>Last.Name<\/strong>: Reitz<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Missouri Department of Conservation<br/><strong>City<\/strong>: Jefferson City<br/><strong>State<\/strong>: MO<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Janet<br/><strong>Last.Name<\/strong>: Cakir<br/><strong>Email<\/strong>: janet_cakir@nps.gov<br/><strong>Position<\/strong>: Climate Change, Socioeconomics, and Adaptation Coordinator<br/><strong>Organization<\/strong>: National Park Service<br/><strong>City<\/strong>: Chapel Hill<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='janet_cakir@nps.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Colter<br/><strong>Last.Name<\/strong>: Chitwood<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC State<br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Merril<br/><strong>Last.Name<\/strong>: Cook<br/><strong>Email<\/strong>: macook3@ncsu.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC State<br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='macook3@ncsu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Nils<br/><strong>Last.Name<\/strong>: Peterson<br/><strong>Email<\/strong>: nils_peterson@ncsu.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC State<br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='nils_peterson@ncsu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Erin<br/><strong>Last.Name<\/strong>: Seekamp<br/><strong>Email<\/strong>: elseekam@ncsu.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC State<br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='elseekam@ncsu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Louise<br/><strong>Last.Name<\/strong>: Vaughn<br/><strong>Email<\/strong>: l_vaughn@ncsu.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC State<br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='l_vaughn@ncsu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: David<br/><strong>Last.Name<\/strong>: Cobb<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC Wildlife Resources Commission<br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Maria<br/><strong>Last.Name<\/strong>: Palamar<br/><strong>Email<\/strong>: maria.palamar@ncwildlife.org<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC Wildlife Resources Commission<br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='maria.palamar@ncwildlife.org'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Dain<br/><strong>Last.Name<\/strong>: Palmer<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC Wildlife Resources Commission<br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Carrie<br/><strong>Last.Name<\/strong>: Ruhlman<br/><strong>Email<\/strong>: carrie.ruhlman@ncwildlife.org<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NC Wildlife Resources Commission<br/><strong>City<\/strong>: Raleigh<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='carrie.ruhlman@ncwildlife.org'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Dan<br/><strong>Last.Name<\/strong>: Keesee<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: NRCS Texas<br/><strong>City<\/strong>: Temple<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Corey<br/><strong>Last.Name<\/strong>: Jager<br/><strong>Email<\/strong>: corey.jager@odwc.ok.gov<br/><strong>Position<\/strong>: Legislative Liaison/HD Specialist<br/><strong>Organization<\/strong>: Oklahoma DWC<br/><strong>City<\/strong>: Oklahoma City<br/><strong>State<\/strong>: OK<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='corey.jager@odwc.ok.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Mark<br/><strong>Last.Name<\/strong>: Duda<br/><strong>Email<\/strong>: mark@responsivemanagement.com<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Responsive Management<br/><strong>City<\/strong>: Harrisonburg<br/><strong>State<\/strong>: VA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='mark@responsivemanagement.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Amanda<br/><strong>Last.Name<\/strong>: Stroud<br/><strong>Email<\/strong>: strouda@dnr.sc.gov<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: South Carolina<br/><strong>City<\/strong>: Columbia<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='strouda@dnr.sc.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Jayme<br/><strong>Last.Name<\/strong>: Waldron<br/><strong>Email<\/strong>: awaldron3@marshall.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: South Carolina<br/><strong>City<\/strong>: Columbia<br/><strong>State<\/strong>: SC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='awaldron3@marshall.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Frank<br/><strong>Last.Name<\/strong>: Moore<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Southern Miss<br/><strong>City<\/strong>: Hattiesburg<br/><strong>State<\/strong>: MS<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Rob<br/><strong>Last.Name<\/strong>: Southwick<br/><strong>Email<\/strong>: rob@southwickassociates.com<br/><strong>Position<\/strong>: President<br/><strong>Organization<\/strong>: Southwick Associates<br/><strong>City<\/strong>: Fernandina Beach<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='rob@southwickassociates.com'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Jesse<br/><strong>Last.Name<\/strong>: Backstrom<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Texas A&M<br/><strong>City<\/strong>: College Station<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Michael<br/><strong>Last.Name<\/strong>: Schuett<br/><strong>Email<\/strong>: mschuett@tamu.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Texas A&M<br/><strong>City<\/strong>: College Station<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='mschuett@tamu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: David<br/><strong>Last.Name<\/strong>: Scott<br/><strong>Email<\/strong>: dscott@tamu.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Texas A&M<br/><strong>City<\/strong>: College Station<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='dscott@tamu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ken<br/><strong>Last.Name<\/strong>: Kurzawski<br/><strong>Email<\/strong>: ken.kurzawski@tpwd.texas.gov<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Texas Parks & Wildlife<br/><strong>City<\/strong>: Austin<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='ken.kurzawski@tpwd.texas.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: John<br/><strong>Last.Name<\/strong>: Taylor<br/><strong>Email<\/strong>: john.taylor@tpwd.texas.gov<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Texas Parks & Wildlife<br/><strong>City<\/strong>: Austin<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='john.taylor@tpwd.texas.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Chris<br/><strong>Last.Name<\/strong>: Serenari<br/><strong>Email<\/strong>: c_s754@txstate.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Texas State University<br/><strong>City<\/strong>: San Marcos<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='c_s754@txstate.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Samantha<br/><strong>Last.Name<\/strong>: Kahl<br/><strong>Email<\/strong>: samantha.kahl@ttu.edu<br/><strong>Position<\/strong>: Assistant Professor<br/><strong>Organization<\/strong>: Texas Tech University<br/><strong>City<\/strong>: Lubbock<br/><strong>State<\/strong>: TX<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='samantha.kahl@ttu.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Chelsey<br/><strong>Last.Name<\/strong>: Crandall<br/><strong>Email<\/strong>: kicksea@ufl.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: University of Florida<br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='kicksea@ufl.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Susan<br/><strong>Last.Name<\/strong>: Jacobson<br/><strong>Email<\/strong>: jacobson@ufl.edu<br/><strong>Position<\/strong>: Professor<br/><strong>Organization<\/strong>: University of Florida<br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='jacobson@ufl.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Kai<br/><strong>Last.Name<\/strong>: Lorenzen<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: University of Florida<br/><strong>City<\/strong>: Gainesville<br/><strong>State<\/strong>: FL<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Troy<br/><strong>Last.Name<\/strong>: Frensley<br/><strong>Email<\/strong>: frensleyb@uncw.edu<br/><strong>Position<\/strong>: Asst Professor<br/><strong>Organization<\/strong>: University of North Carolina Wilmington<br/><strong>City<\/strong>: Wilmington<br/><strong>State<\/strong>: NC<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='frensleyb@uncw.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Rene<br/><strong>Last.Name<\/strong>: Valdez<br/><strong>Email<\/strong>: rene.valdez@dgif.virginia.gov<br/><strong>Position<\/strong>: Human Dimensions Specialist<br/><strong>Organization<\/strong>: Virginia Department of Game and Inland Fisheries<br/><strong>City<\/strong>: Henrico<br/><strong>State<\/strong>: VA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='rene.valdez@dgif.virginia.gov'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Amy<br/><strong>Last.Name<\/strong>: Carrozzino-Lyon<br/><strong>Email<\/strong>: acarroz@vt.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Virginia Tech<br/><strong>City<\/strong>: Blacksburg<br/><strong>State<\/strong>: VA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='acarroz@vt.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Ashley<br/><strong>Last.Name<\/strong>: Dayer<br/><strong>Email<\/strong>: dayer@vt.edu<br/><strong>Position<\/strong>: Asst Professor<br/><strong>Organization<\/strong>: Virginia Tech<br/><strong>City<\/strong>: Blacksburg<br/><strong>State<\/strong>: VA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='dayer@vt.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Michael<br/><strong>Last.Name<\/strong>: Sorice<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: Virginia Tech<br/><strong>City<\/strong>: Blacksburg<br/><strong>State<\/strong>: VA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Marc<br/><strong>Last.Name<\/strong>: Stern<br/><strong>Email<\/strong>: mjstern@vt.edu<br/><strong>Position<\/strong>: Professor<br/><strong>Organization<\/strong>: Virginia Tech<br/><strong>City<\/strong>: Blacksburg<br/><strong>State<\/strong>: VA<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='mjstern@vt.edu'>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Robert<br/><strong>Last.Name<\/strong>: Burns<br/><strong>Email<\/strong>: <br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: West Virginia University<br/><strong>City<\/strong>: Morgantown<br/><strong>State<\/strong>: WV<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href=''>Link to paper<\/a><\/strong>","<strong>First.Name<\/strong>: Chad<br/><strong>Last.Name<\/strong>: Pierskalla<br/><strong>Email<\/strong>: Chad.Pierskalla@mail.wvu.edu<br/><strong>Position<\/strong>: <br/><strong>Organization<\/strong>: West Virginia University<br/><strong>City<\/strong>: Morgantown<br/><strong>State<\/strong>: WV<br/><strong>Website..Institutional.<\/strong>: <br/><strong>Website..Personal.<\/strong>: <br/><strong>LinkedIn<\/strong>: <br/><strong>Twitter<\/strong>: <br/><strong>Contactable<\/strong>: Yes<br/> <strong><a target='_blank' rel='noopener noreferrer' href='Chad.Pierskalla@mail.wvu.edu'>Link to paper<\/a><\/strong>"],null,null,{"interactive":false,"permanent":false,"direction":"auto","opacity":1,"offset":[0,0],"textsize":"10px","textOnly":false,"className":"","sticky":true},null]}],"limits":{"lat":[26.42,46.73],"lng":[-117,-76.501]}},"evals":[],"jsHooks":[]}</script>
+<script type="application/htmlwidget-sizing" data-for="htmlwidget-5992b085b6291497cab2">{"viewer":{"width":"100%","height":400,"padding":0,"fill":true},"browser":{"width":"100%","height":400,"padding":0,"fill":true}}</script>
 </body>
 </html>
